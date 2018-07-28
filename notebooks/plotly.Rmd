@@ -1,0 +1,342 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(plotly)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(jsonlite)
+df <- stream_in(file('../data/fics.jsl'))
+df %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  size_cat = factor(size_cat, levels = c("small", "medium", "large"), ordered = TRUE),
+  rating = factor(rating, levels = c("не указан", "General", "PG-13", "R", "NC-17"), ordered = TRUE),
+  translated = translators %>% sapply(length) > 0,
+  characters_unpaired = sapply(characters, function(x) as.vector( unlist(x) ))
+) -> df
+glimpse(df)
+```
+
+# Введение в `plotly`
+
+- миссия Plotly -- портируемые графики
+- любой график на самом деле -- большой JSON
+- поэтому все настройки -- куски этого большого JSON
+
+## JSON
+
+JSON -- формат записи данных, где существуют
+
+- списки `['a', 'b', 'c']`
+- словари `{key1: 'value1', key2: ['d', 'e', 'f']}`
+- числа `1, 3, 10`
+- строки `'a', 'b'`
+
+Пример JSON:
+
+`[
+  {
+    type: 'scatter',
+    x: [1, 2, 3],
+    y: [1, 4, 9]
+  }, {
+    type: 'boxplot',
+    x: [1, 2, 3],
+    y: [1, 4, 9]
+  }
+]`
+
+## JSON-like структуры в R
+
+- словарь -- это именованный список: `list(a = 10, b = 20)`
+- список -- вектор: `c('a', 'b'), 1:10`
+
+```{r}
+list(10, data_frame(x = 1:10, y = 2 * x))
+c(10, data_frame(x = 1:10, y = 2 * x))
+1:10
+```
+
+
+# Работа с Plotly
+
+- любой график состоит из traces и layout:
+
+```{r}
+df %>% plot_ly() %>% 
+  add_trace(x = ~published, y = ~size_kb, color = ~rating, 
+            type = 'scattergl') %>% 
+  add_bars(x = ~published, y = ~size_kb) %>% 
+  layout(
+    xaxis = list(title = 'Дата публикации'), 
+    yaxis = list(title = 'Размер, Кб')
+    )
+```
+
+- Где смотреть: [полная справка](https://plot.ly/r/reference), [примеры](https://plot.ly/r/)
+- Любой трейс (графический объект) -- это тоже JSON
+- Какие у трейса параметры (`type`, `x`, `y`, `name`)? Смотрим в полной справке
+- В любом трейсе указан `type = "<trace type>"`
+- Но если используется специальный конструктор вроде `add_boxplot`, то `type` указывается без вашего участия
+- Какие бывают трейсы и как они называются? Смотрим в примерах и полной справке.
+
+
+# Базовые графики
+
+## Число публикаций в месяц за последние 5 лет
+
+```{r}
+df %>% filter(published > today() - years(5)) %>% 
+  count(month = published - days(day(published)) + 1) %>% 
+  plot_ly() %>% add_trace(
+    x = ~month, 
+    y = ~n, 
+    type='scatter', 
+    mode='markers+lines',
+    line=list(shape='spline')
+    )
+```
+
+## Число публикаций в месяц за последние 5 лет; по оси x -- месяц, разные годы показаны разными цветами
+
+```{r}
+df %>% filter(published > today() - years(5)) %>% 
+  count(month = published - days(day(published)) + 1) %>% 
+  mutate(
+    month_num = month(month),
+    year_num = as.character(year(month))
+  ) %>% plot_ly() %>% add_trace(
+    x = ~month_num,
+    y = ~n,
+    color = ~year_num,
+    type = 'scatter',
+    mode = 'lines+markers'
+  ) %>% layout(
+    xaxis = list(
+      title = 'Month',
+      tickvals = 1:12,
+      ticktext= month.name
+    )
+  )
+```
+
+
+
+
+
+
+
+```{r}
+df %>% 
+  filter(year(published) > 2010) %>% 
+  count(month = published - days(day(published)) + 1, rating) %>% 
+  plot_ly() %>% 
+  add_trace(
+    x = ~month, 
+    y = ~n, 
+    color = ~rating, 
+    mode='lines+markers', 
+    line=list(shape='spline', width = 1)
+    ) %>% 
+  layout(
+    yaxis = list(type = 'log2'),
+    title = 'Rating tendencies in fanfiction'
+    )
+```
+
+## Ящик с усами: соотношение между числом предупреждений и рейтингом фанфиков
+
+```{r}
+top_warnings <- df %>% 
+  filter( !sapply(warnings, is.null) ) %>% 
+  unnest(warnings) %>% 
+  count(warnings) %>% 
+  top_n(50, n) %>% pull(warnings)
+
+df %>% 
+  filter( !sapply(warnings, is.null) ) %>% 
+  unnest(warnings) %>% 
+  filter(warnings %in% top_warnings) %>% 
+  count(id, rating) %>% filter(rating != 'не указан') %>% plot_ly() %>% add_boxplot(
+    x = ~rating,
+    y = ~n
+  )
+```
+
+
+```{r}
+df %>% mutate(
+  num_warnings = sapply(warnings, length)
+) %>% plot_ly() %>% 
+  add_boxplot(
+    x = ~rating,
+    y = ~num_warnings
+  )
+```
+
+## Число публикаций в месяц за последние 5 лет: нарисуйте barchart (`add_bars`) и точки, соединённые линиями (`add_trace`)
+
+```{r}
+df %>% 
+  filter(published > today() - years(5)) %>% 
+  count(month = published - days(day(published))) %>% 
+  plot_ly() %>% 
+  add_bars(x = ~month, y = ~n) %>% 
+  add_trace(x = ~month, y = ~n, mode='lines+markers')
+```
+
+# Много данных и интерактив: `scattergl`
+
+## Для всех существующих жанров показать количество публикаций с ними за каждый месяц
+
+```{r}
+df %>% 
+  mutate(month = published - days(day(published)) + 1) %>% 
+  unnest(genre) %>% 
+  count(genre, month) %>% 
+  complete(genre, month, fill = list(n = 0)) %>% 
+  plot_ly() %>% add_trace(
+    x =~month,
+    y = ~n,
+    color = ~genre,
+    type = 'scatter',
+    mode = 'lines+markers',
+    
+  )
+```
+
+# Подграфики
+
+- `subplots(p1, p2)`
+
+```{r}
+p1 <- df %>% plot_ly(
+  x =~size_kb, 
+  y = ~rating, 
+  type = 'scatter',
+  name = 'rating'
+  ) %>% layout(title = 'b')
+p2 <- df %>% plot_ly(
+  x = ~size_kb, 
+  y = ~size_cat, 
+  type = 'scatter',
+  name = 'size category'
+  ) %>% layout(title = 'a')
+subplot(p1, p2, nrows = 2) %>% layout(title = 'total')
+```
+
+
+## Нарисуйте ежегодное количество публикаций каждого рейтинга (мы уже это делали!)
+
+## Нарисуйте, какую долю от ежегодного количества публикаций занимают публикации каждого рейтинга
+
+## Поставьте два этих графика один под другим с общей осью `x`
+
+```{r}
+p1 <- df %>% 
+  filter(rating != 'не указан') %>% 
+  count(year = year(published), rating) %>% 
+  plot_ly(
+    type = 'scatter', 
+    x = ~year, 
+    y = ~n, 
+    color = ~rating,
+    mode = 'lines+markers',
+    legendgroup = ~rating
+    )
+```
+```{r}
+color <- ~as.factor(color)
+color
+p2 <- df %>% 
+  filter(rating != 'не указан') %>% 
+  count(year = year(published), rating) %>% 
+  group_by(year) %>% mutate(
+    n = n / sum(n)
+  ) %>% 
+  plot_ly(
+    type = 'scatter', 
+    x = ~year, 
+    y = ~n, 
+    color = ~rating,
+    mode = '',
+    legendgroup = ~rating,
+    showlegend = FALSE
+    ) %>% layout(
+      barmode = 'stack'
+    ) %>% layout(
+      barmode = 'stack'
+    )
+```
+```{r}
+plot <- subplot(p1, p2, nrows = 2, shareX = TRUE) 
+plot
+```
+Важные ссылки про кнопочки:
+
+- [туториалы](https://plot.ly/r/custom-buttons/#reference)
+- справка R, раздел про все настройки отображения кнопочек: [link](https://plot.ly/r/reference/#layout-updatemenus)
+- документация Plotly.js, объясняющая, какие аргументы на самом деле нужно передавать в `args`: [link](https://plot.ly/javascript/plotlyjs-function-reference/#plotlyrestyle)
+
+```{r}
+plot %>% layout(
+  updatemenus = list(
+    list(
+      type = 'buttons',
+      buttons = list(
+        list(
+          method = 'restyle',
+          args = list('type', 'bar'),
+          label = 'Bars'
+        ),
+        list(
+          method = 'restyle',
+          args = list('type', 'scatter'),
+          label = 'Points'
+        )
+      ),
+      active = 1
+    )
+  )
+)
+```
+```{r}
+plot %>% layout(
+  updatemenus = list(
+    list(
+      type = 'buttons',
+      buttons = list(
+        list(
+          method = 'restyle',
+          args = list(
+            list(
+              type = 'bar',
+              color = 'red'
+            )
+          ),
+          label = 'show as bars'
+        ),
+        list(
+          method = 'restyle',
+          args = list(
+            list(
+              type = 'scatter'
+            )
+          ),
+          label = 'show as points'
+        )
+      )
+    )
+  )
+)
+```
+

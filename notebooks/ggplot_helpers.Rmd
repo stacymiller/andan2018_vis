@@ -1,0 +1,29 @@
+---
+title: "`ggplot` helpers"
+output: html_notebook
+---
+
+```{r}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(jsonlite)
+df_raw <- stream_in(file('../data/fics.jsl'))
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+df <- df_raw %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  size_cat = factor(size_cat, levels = c("small", "medium", "large"), ordered = TRUE),
+  rating = factor(rating, levels = c("не указан", "General", "PG-13", "R", "NC-17"), ordered = TRUE),
+  translated = translators %>% sapply(length) > 0,
+  characters_unpaired = sapply(characters, function(x) as.vector( unlist(x) ))
+)
+```
+
+```{r}
+glimpse(df)
+```
+
+
+

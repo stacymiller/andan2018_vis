@@ -1,0 +1,31 @@
+pre, div, code {
+  margin-left: 0;
+  margin-right: 0;
+}
+
+pre {
+  display: block;
+  padding: 9.5px;
+  line-height: 1.2;
+  word-break: break-all;
+  word-wrap: break-word;
+  border: 1px solid #cccccc;
+}
+
+pre.sourceCode, code.sourceCode {
+  font-size: 100%;
+}
+
+code {
+  font-family: "Ubuntu Mono",monospace;
+  font-size: 100%;
+}
+
+table {
+  font-family: "Ubuntu Mono",monospace;
+  font-size: 80%;
+}
+
+body, h1, h2, h3, h4, h5, h6, p {
+  font-family: "Ubuntu Sans", sans-serif;
+}

@@ -1,0 +1,390 @@
+---
+title: "Russian fanfiction through analysis"
+output:
+  slidy_presentation:
+    css: ['http://fonts.googleapis.com/css?family=Ubuntu+Mono', 'styles.css']
+    df_print: kable
+    theme: united
+    pandoc_args: [
+      "--slide-level", "2"
+    ]
+    fig_width: 7
+    fig_height: 5
+    fig_caption: true
+  # ioslides_presentation:
+  #   df_print: paged
+---
+
+# Разминка: простые данные, простые вопросы
+
+```{r include=FALSE}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(readr)
+df <- read_csv('../data/fics_simple.csv')
+```
+
+
+## Смотрим на данные
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+head(df)
+```
+
+```{r include=FALSE}
+library(tidyr)
+library(lubridate)
+library(dplyr)
+```
+
+## Смотрим на данные
+
+```{r}
+glimpse(df)
+```
+
+<!-- ## Pipe operator `%>%` -->
+
+<!-- ### Базовое использование -->
+
+<!-- `%>%` подставляет то, что у него слева, первым аргументом в вызов справа: -->
+
+<!-- - `x %>% f` -- то же, что и `f(x)` -->
+<!-- - `x %>% f(y)` -- то же, что и `f(x, y)` -->
+<!-- - `x %>% f %>% g` -- то же, что и `g(f(x))` -->
+
+<!-- ### С нестандартной позицией аргумента -->
+
+<!-- `.` указывает, куда именно справа подставлять левую часть оператора: -->
+
+<!-- - `x %>% f(y, .)` -- то же, что и `f(y, x)` -->
+<!-- - `x %>% f(y, z = .)` -- то же, что и `f(y, z = x)` -->
+
+<!-- Больше подробностей: смотреть в [документации `magrittr`](https://magrittr.tidyverse.org/index.html). -->
+
+<!-- ## Фильтрация: `filter` и `select` -->
+
+## Сколько всего фанфиков?
+
+```{r}
+df %>% nrow()
+```
+
+```{r}
+df %>% filter(size_cat == 'small') %>% nrow()
+df %>% select(id, starts_with('size'))
+```
+
+
+## Здесь есть есть авторские произведения и переводы. Сколько авторских, сколько переводов?
+
+```{r}
+df %>% group_by(translated) %>% count()
+df %>% summarise(
+  authored = sum(!translated),
+  translated = sum(translated)
+)
+```
+
+## Какой из двух вариантов решения задачи быстрее?
+```{r include=FALSE}
+library(microbenchmark)
+library(ggplot2)
+theme_set(theme_light(base_size = 22, base_family = 'Ubuntu'))
+```
+
+
+```{r}
+microbenchmark(
+  'group_by' = {df %>% group_by(translated) %>% count()},
+  'summarise' = {df %>% summarise(
+    authored = sum(!translated), 
+    translated = sum(translated))}
+) %>% autoplot()
+```
+
+`summarise` в подобных случаях одерживает убедительную победу.
+
+## Когда опубликован самый недавний фанфик? И что это за фанфик?
+
+```{r}
+df %>% filter(published == max(published))
+df %>% top_n(1, published)
+```
+
+## Какой из двух вариантов решения быстрее?
+```{r}
+microbenchmark(
+  'filter' = {df %>% filter(published == max(published))},
+  'top_n' = {df %>% top_n(1, published)}
+) %>% autoplot()
+```
+
+Фильтр существенно быстрее: `top_n` для определения нужных кандидатов делает сортировку, а фильтрация находит один максимум и делает проверку на равенство.
+
+## Когда опубликован самый первый фанфик? И что это был за фанфик?
+
+```{r}
+df %>% filter(size_kb > 100) %>% nrow()
+df %>% filter(published == min(published))
+```
+
+## Какой фанфик писался дольше всего? Сколько времени заняло написание?
+```{r}
+df %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  time_to_complete = last_update - published
+) %>% filter(
+  time_to_complete == max(time_to_complete)
+)
+```
+
+## Из тех фанфиков, которые писались больше года, какой был раньше всех начат и когда это случилось?
+```{r}
+df %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  time_to_complete = last_update - published) %>% 
+  filter(time_to_complete > years(1)) %>% 
+  filter(published == min(published))
+```
+
+## Когда опубликовали первый переводной фанфик?
+```{r}
+df %>% filter(translated) %>% pull(published) %>% min()
+df %>% filter(translated) %>% `$`(published)
+```
+
+## Сколько времени прошло от открытия сайта до завершения  пятого опубликованного перевода?
+```{r}
+opening_day <- ymd(min(df$published))
+fifth_translation_complete <- df %>% 
+  filter(translated) %>% arrange(published) %>% 
+  slice(5) %>% pull(last_update) %>% ymd()
+fifth_translation_complete - opening_day
+```
+```{r}
+df %>% group_by(
+  size_cat
+) %>% summarise(
+  mean_size = mean(size_kb),
+  mean_ttc = mean(ymd(last_update) - ymd(published)),
+  median_ttc = median(ymd(last_update) - ymd(published))
+)
+```
+
+
+## Сколько фанфиков написано с начала этого года?
+```{r}
+df %>% select(
+  id, title, published
+) %>% mutate(
+  year = year(ymd(published))
+) %>% filter(
+  year == year(today())
+) %>% count()
+
+df %>% select(
+  id, title, published
+) %>% filter(
+  substr(published, 1, 4) == '2018'
+) %>% count()
+```
+
+## Какой из двух вариантов решения быстрее?
+
+```{r}
+microbenchmark(
+  'date' = { df %>% filter(year(ymd(published)) == year(today())) %>% count() },
+  'string' = { df %>% filter(substr(published, 1, 4) == '2018') %>% count() }
+) %>% autoplot()
+```
+```{r}
+df %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  time_to_complete = last_update - published
+)
+```
+
+
+## Сколько фанфиков написано за последний год?
+```{r}
+df %>% transmute(
+  published = ymd(published)
+) %>% filter(
+  published > today() - years(1)
+) %>% count()
+```
+```{r}
+df %>% select(title, size_kb, published) %>% arrange(published, desc(size_kb))
+```
+
+
+## Сколько фанфиков опубликовано за первый год? 
+
+```{r}
+df %>% mutate(
+  published = ymd(published)
+) %>% filter(
+  published < min(published) + years(1)
+) %>% count()
+```
+
+# Основная часть: нормальные данные, нормальные вопросы
+
+```{r}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(jsonlite)
+df <- stream_in(file('../data/fics.jsl'))
+```
+
+```{r}
+head(df)
+```
+
+```{r}
+glimpse(df)
+```
+```{r}
+df %>% select(id, title, genre) %>% slice(1:3)# %>% unnest(genre)
+```
+
+```{r}
+df %>% mutate(
+  characters = characters %>% sapply(as.vector) %>% sapply(unlist) %>% sapply(unique)
+) %>% replace_na(list(characters = '')) %>% unnest(characters)
+```
+
+## Как часто публикуются фанфики? Сколько в среднем в месяц, в квартал? А если считать не за все годы, а за последние пять?
+
+```{r}
+df %>% mutate(
+  published = ymd(published),
+  year = year(published),
+  month = month(published)
+) %>% group_by(
+  year, month
+) %>% count() %>% ungroup() %>% summarise(
+  monthly_rate_total = mean(n),
+  monthly_rate_last_5 = mean(
+    n[year >= year(today()) - 5])
+)
+```
+
+```{r}
+df %>% group_by(
+  year = year(ymd(published)), month = month(ymd(published))
+) %>% count() %>% ungroup() %>% summarise(
+  monthly_rate_total = mean(n),
+  monthly_rate_last_5 = mean(
+    n[year >= year(today()) - 5])
+)
+```
+
+## Отличается ли частота публикаций для фанфиков разных рейтингов?
+```{r}
+df %>% group_by(
+  rating, 
+  year = year(ymd(published)), 
+  month = month(ymd(published))
+) %>% count() %>% 
+  group_by(rating) %>% 
+  summarise(freq = mean(n), freq_med = median(n)) %>% 
+  arrange(freq)
+```
+
+
+- Как зависит количество опубликованных фанфиков от времени? Оно точно растёт, но как быстро? Есть ли падение популярности в последние годы?
+
+```{r}
+df %>% mutate(
+  published = ymd(published),
+) %>% group_by(
+  year(published)
+) %>% count()
+
+df %>% mutate(
+  published = ymd(published),
+) %>% arrange(published) %>% mutate(
+  num = row_number()
+) %>% group_by(year(published)) %>% summarise(
+  n_by_end_of_year = last(num)
+)
+```
+
+- Когда опубликовали первый переводной фанфик?
+```{r}
+df %>% select(
+  id, title, published, translators
+) %>% mutate(
+  translated = translators %>% lapply(length) > 0
+) %>% filter(
+  translated
+) %>% top_n(1, desc(published))
+```
+
+## Каков самый популярный жанр?
+```{r}
+df %>% 
+  unnest(genre) %>% 
+  select(genre) %>% 
+  group_by(genre) %>% 
+  count() %>% arrange(desc(n))
+```
+## Каков был самый популярный жанр в каждый из последних восьми лет?
+```{r}
+# df %>% unnest(genre) %>% select(published, genre) %>%
+#   group_by(year = year(published), genre) %>% count() %>%
+#   group_by(year) %>% filter(
+#     (year >= year(today()) - 8) & (n == max(n))
+#   ) %>% arrange(desc(year))
+df %>% unnest(genre) %>% select(published, genre) %>%
+  count(year = year(published), genre) %>% 
+  filter(year >= year(today()) - 8) %>% 
+  group_by(year) %>% filter(n == max(n)) %>% 
+  arrange(desc(year))
+```
+## С какими жанрами чаще всего сочетается AU (alternative universe)?
+```{r}
+df %>% filter(
+  ((genre %>% sapply(length)) >= 2) & 
+    (sapply(genre, function(x) 'AU' %in% x))
+) %>% unnest(genre) %>% filter(
+  genre != 'AU'
+) %>% count(genre) %>% arrange(desc(n))
+
+has_au <- function(x) 'AU' %in% x
+has_au(c('bla', 'bla'))
+sapply(df$title, nchar)
+```
+
+```{r}
+df %>% select(id, title, published, last_update) %>% slice(c(1,3,5)) %>% gather("action_type", "date", published, last_update)
+```
+
+```{r}
+df %>% count(rating, year = year(published)) %>% spread(year, n)
+```
+## Соберите отчёт по количеству публикаций в пяти наиболее популярных жанрах за последние 10 лет. Каждый год — отдельная колонка.
+
+```{r}
+top_5_genres <- df %>% 
+  filter(year(published) >= year(today()) - 10) %>% 
+  unnest(genre) %>% count(genre) %>% 
+  top_n(5, n) %>% pull(genre)
+
+df %>% filter(year(published) >= year(today()) - 10) %>% 
+  unnest(genre) %>% filter(genre %in% top_5_genres) %>% 
+  count(genre, year = year(published)) %>% spread(year, n)
+```
+
+
+- Какая временная динамика у переводов? У авторских произведений? Похожи ли они?
+- Какой самый популярный размер фанфиков? Меняется ли этот ответ с годами? Одинаков ли ответ для авторских и переводных произведений?
+- Может ли категория размера (`small`, `medium`, `large`) быть определена по размеру в килобайтах?
+- Сколько времени в среднем проходит между публикацией и завершением (последним обновлением) фанфика? А если добавить категорию размера -- поменяются результаты? Кстати говоря, как статистически проверить, значимо ли отличаются средние по категориям от общего среднего? А бутстрапом слабо?
+- Когда обычно заканчивают фанфики? Есть ли какие-то пики в конце недели, в каком-нибудь особенном месяце, в конце года, в каком-то специальном числе каждого месяца? А являются ли они статистически значимыми?
+
+
+
