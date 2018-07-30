@@ -32,8 +32,8 @@ class IdSpider(scrapy.Spider):
         metadata = {
             "id": fic_id,
             "title": table.css("h1::text").extract_first(),
-            "published": dt.datetime.strptime(published, "%d.%m.%Y").date(),
-            "last_update": dt.datetime.strptime(last_update, "%d.%m.%Y").date()
+            "published": dt.datetime.strptime(published, "%d.%m.%Y").date() if published else None,
+            "last_update": dt.datetime.strptime(last_update, "%d.%m.%Y").date() if last_update else None
         }
 
         for field in table.css("div.tr"):
@@ -62,8 +62,8 @@ class IdSpider(scrapy.Spider):
                 metadata['size_kb'] = size_kb
             elif "Персонажи" in title:
                 characters = content.xpath('a[contains(@href, "paring")]/text()').extract()
-                characters = [pair.split('/', 1) for pair in characters]
-                characters.append(content.xpath('a[contains(@href, "character")]/text()').extract())
+                characters = [pair.split('/') for pair in characters]
+                characters.extend(content.xpath('a[contains(@href, "character")]/text()').extract())
                 metadata['characters'] = characters
             else:
                 pass
