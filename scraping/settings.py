@@ -15,14 +15,14 @@ BOT_NAME = 'scraping'
 SPIDER_MODULES = ['scraping.spiders']
 NEWSPIDER_MODULE = 'scraping.spiders'
 
-# FEED_URI = 'file:///{}/data/fics.jsl'.format(os.getcwd())
-# FEED_FORMAT = 'jsonlines'
-# FEED_EXPORT_ENCODING = 'utf-8'
+FEED_URI = 'file:///{}/data/fics.jsl'.format(os.getcwd())
+FEED_FORMAT = 'jsonlines'
+FEED_EXPORT_ENCODING = 'utf-8'
 
-# LOG_LEVEL = 'INFO'
+LOG_LEVEL = 'INFO'
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-#USER_AGENT = 'spd (+http://www.yourdomain.com)'
+USER_AGENT = 'spd (+http://stacymiller.ru)'
 
 # Obey robots.txt rules
 ROBOTSTXT_OBEY = True
