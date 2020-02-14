@@ -1,0 +1,320 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(plotly)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(jsonlite)
+df_raw <- stream_in(file('fics_extended.jsl'), simplifyMatrix = FALSE)
+df <- df_raw %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  size_cat = factor(size_cat, levels = c("small", "medium", "large"), ordered = TRUE),
+  rating = ifelse(rating == "G", "General", rating) %>% factor(levels = c("не указан", "General", "PG-13", "R", "NC-17"), ordered = TRUE),
+  translated = translators %>% sapply(length) > 0,
+  characters_unpaired = sapply(characters, function(x) as.vector( unlist(x) ))
+)
+```
+
+# Работа с Plotly
+
+- любой график состоит из traces и layout:
+
+```{r}
+df %>% plot_ly() %>% 
+  add_trace(x = ~published, y = ~size_kb, color = ~rating, 
+            type = 'scattergl') %>% 
+  add_bars(x = ~published, y = ~size_kb) %>% 
+  layout(
+    xaxis = list(title = 'Дата публикации'), 
+    yaxis = list(title = 'Размер, Кб')
+    )
+```
+
+- Где смотреть: [полная справка](https://plot.ly/r/reference), [примеры](https://plot.ly/r/)
+- Любой трейс (графический объект) -- это тоже JSON
+- Какие у трейса параметры (`type`, `x`, `y`, `name`)? Смотрим в полной справке
+- В любом трейсе указан `type = "<trace type>"`
+- Но если используется специальный конструктор вроде `add_boxplot`, то `type` указывается без вашего участия
+- Какие бывают трейсы и как они называются? Смотрим в примерах и полной справке.
+
+# Базовые графики
+
+## Число публикаций в месяц за последние 5 лет
+
+```{r}
+
+```
+
+## Число публикаций в месяц за последние 5 лет; по оси x -- месяц, разные годы показаны разными цветами
+
+```{r}
+
+```
+
+## Ящик с усами: соотношение между числом предупреждений и рейтингом фанфиков
+
+```{r}
+
+```
+
+## Число публикаций в месяц за последние 5 лет: нарисуйте barchart (`add_bars`) и точки, соединённые линиями (`add_trace`)
+
+```{r}
+df %>% 
+  filter(published > today() - years(5)) %>% 
+  count(month = floor_date(published, 'months')) -> plot_data
+plot_data
+```
+```{r}
+plot_data %>% plot_ly %>% 
+  add_trace(
+    x = ~month, 
+    y = ~n,
+    type = 'scatter',
+    mode = 'lines+markers',
+    showlegend = F,
+    line = list(shape = 'hvh')
+    ) %>% 
+  add_bars(
+    x = ~month, 
+    y = ~n,
+    showlegend = F
+  )
+```
+
+# Введение в `plotly`
+
+- миссия Plotly -- портируемые графики
+- любой график на самом деле -- большой JSON
+- поэтому все настройки -- куски этого большого JSON
+
+## JSON
+
+JSON -- формат записи данных, где существуют
+
+- списки `['a', 'b', 'c']`
+- словари `{key1: 'value1', key2: ['d', 'e', 'f']}`
+- числа `1, 3, 10`
+- строки `'a', 'b'`
+
+Пример JSON:
+
+`[
+  {
+    type: 'scatter',
+    x: [1, 2, 3],
+    y: [1, 4, 9]
+  }, {
+    type: 'boxplot',
+    x: [1, 2, 3],
+    y: [1, 4, 9]
+  }
+]`
+
+## JSON-like структуры в R
+
+- словарь -- это именованный список: `list(a = 10, b = 20)`
+- список -- вектор: `c('a', 'b'), 1:10`
+
+# Много данных и интерактив: `scattergl`
+
+## Для всех существующих жанров показать количество публикаций с ними за каждый день
+
+```{r}
+df %>% unnest(genre) %>% count(published, genre) -> plot_data
+plot_data
+```
+```{r}
+plot_data %>% plot_ly %>% 
+  add_trace(x = ~published, y = ~n, color = ~genre, type = 'scattergl', mode = 'lines+markers')
+```
+
+# Подграфики
+
+- `subplots(p1, p2)`
+
+```{r}
+p1 <- df %>% plot_ly(
+  x =~size_kb, 
+  y = ~rating, 
+  type = 'scatter',
+  name = 'rating'
+  ) %>% layout(title = 'b')
+
+p2 <- df %>% plot_ly(
+  x = ~size_kb, 
+  y = ~size_cat, 
+  type = 'scatter',
+  name = 'size category'
+  ) %>% layout(title = 'a')
+
+subplot(p1, p2, nrows = 2, shareX = TRUE) %>% layout(title = 'total')
+```
+
+## Нарисуйте ежегодное количество публикаций каждого рейтинга (мы уже это делали!)
+
+## Нарисуйте, какую долю от ежегодного количества публикаций занимают публикации каждого рейтинга
+
+```{r}
+df %>% 
+  count(year = year(published), rating) %>% 
+  group_by(year) %>%
+    mutate(share = n / sum(n)) %>%
+  ungroup() %>%
+  plot_ly %>% 
+  add_bars(x = ~year, y = ~n, color = ~rating) %>% 
+  layout(barmode = 'stack')
+```
+
+
+## Поставьте два этих графика один под другим с общей осью `x`
+
+```{r}
+df %>% 
+  count(year = year(published), rating) %>% 
+  group_by(year) %>%
+    mutate(share = n / sum(n)) %>%
+  ungroup() -> plot_data
+
+p1 <- plot_data %>% plot_ly %>% add_bars(
+  x = ~year, y = ~n, color = ~rating,
+  legendgroup = ~rating
+  )
+p2 <- plot_data %>% plot_ly %>% add_bars(
+  x = ~year, y = ~share, 
+  color = ~rating, legendgroup = ~rating, 
+  showlegend = FALSE)
+
+subplot(p1, p2, nrows = 2, shareX = TRUE)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Кнопочки
+
+Важные ссылки про кнопочки:
+
+- [туториалы](https://plot.ly/r/custom-buttons/#reference)
+- справка R, раздел про все настройки отображения кнопочек: [link](https://plot.ly/r/reference/#layout-updatemenus)
+- документация Plotly.js, объясняющая, какие аргументы на самом деле нужно передавать в `args`: [link](https://plot.ly/javascript/plotlyjs-function-reference/#plotlyrestyle)
+
+
+```{r}
+df %>% 
+  filter(year(published) > year(today()) - 5) %>% 
+  count(year = floor_date(published, 'years'), category) -> plot_data
+plot_data
+```
+```{r}
+plot_data %>% plot_ly %>% 
+  add_bars(
+    x = ~year,
+    y = ~n,
+    color = ~category
+  ) %>% 
+  layout(
+    barmode = 'stack',
+    updatemenus = list(
+      list(
+        type = 'buttons',
+        active = 0,
+        x = -0.1, xanchor = 'right',
+        buttons = list(
+          list(
+            method = 'relayout',
+            args = list('barmode', 'stack'),
+            label = 'stacked bars'
+          ),
+          list(
+            method = 'relayout',
+            args = list('barmode', 'group'),
+            label = 'grouped bars'
+          )
+        )
+      )
+    ),
+    title = "Смена способа группировки баров"
+  )
+```
+
+## Сделайте кнопки для выбора типа нормировки баров (абсолютные значения или проценты от общего числа)
+
+```{r}
+plot_data %>% plot_ly %>% 
+  add_bars(
+    x = ~year,
+    y = ~n,
+    color = ~category
+  ) %>% 
+  layout(
+    barmode = 'group',
+    updatemenus = list(
+        list(
+          type = 'buttons',
+          active = 1,
+          x = -0.1, xanchor = 'right',
+          y = 0,
+          buttons = list(
+            list(
+              method = 'relayout',
+              args = list('barnorm', 'percent'),
+              label = 'percent norm' 
+            ),
+            list(
+              method = 'relayout',
+              args = list('barnorm', ''),
+              label = 'absolute numbers'
+            )
+          )
+        ),
+      list(
+        type = 'buttons',
+        active = 1,
+        x = -0.1, xanchor = 'right',
+        y = 1,
+        buttons = list(
+          list(
+            method = 'relayout',
+            args = list('barmode', 'group'),
+            label = 'group' 
+          ),
+          list(
+            method = 'relayout',
+            args = list('barmode', 'stack'),
+            label = 'stack'
+          )
+        )
+      )
+    ),
+    title = "Смена способа группировки баров"
+  )
+```
+
+
+## Сделайте кнопки для смены способа визуализации: переключение между барами и линиями с точками
+
+
+
+## Сделайте кнопку для фильтрации данных: учитывать все данные или только топ-10% опубликованного в этом году по числу рекомендаций
+
+

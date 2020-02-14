@@ -1,0 +1,161 @@
+---
+title: "Russian fanfiction through analysis"
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+theme_set(theme_light(base_size = 14, base_family = 'Ubuntu'))
+```
+```{r}
+df_raw <- stream_in(file('fics.jsl'))
+```
+
+```{r include=FALSE}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(jsonlite)
+df_raw <- stream_in(file('fics.jsl'))
+df <- df_raw %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  size_cat = factor(size_cat, levels = c("small", "medium", "large"), ordered = TRUE),
+  rating = ifelse(rating == "G", "General", rating) %>% factor(levels = c("не указан", "General", "PG-13", "R", "NC-17"), ordered = TRUE),
+  translated = translators %>% sapply(length) > 0,
+  characters_unpaired = sapply(characters, function(x) as.vector( unlist(x) ))
+)
+```
+
+```{r}
+glimpse(df)
+```
+
+Это негуманный практикум: придётся много и быстро читать документацию. Или даже гуглить (но чаще всего достаточно документации).
+
+# Aesthetics
+
+## Покажите размеры фанфиков в зависимости от даты публикации
+```{r}
+ggplot(df, aes(x = published, y = size_kb)) + geom_point()
+```
+
+## Отметьте цветом рейтинг фанфика
+```{r}
+
+```
+
+## Используйте разную форму метки (квадрат, треугольник) для переводов и оригинальных произведений
+```{r}
+
+```
+
+
+## Отметьте цветом рейтинг фанфика
+
+```{r}
+
+```
+
+# Шкалы
+
+```{r}
+ggplot(df, aes(x = rating, y = size_kb)) + geom_jitter() + 
+  scale_x_discrete(labels = c('', 'можно всем', 'осторожно', 'очень\nосторожно', 'взрослым'))
+```
+
+## Покажите соотношение между категорией размера и фактическим размером. Отметьте цветом рейтинг фанфика.
+
+```{r}
+
+```
+
+## Покажите фактический размер на логарифмической шкале с основанием два
+```{r}
+
+```
+
+## Переведите оси и легенду графика на русский.
+
+```{r}
+
+```
+
+# Трансформации
+
+```{r}
+ggplot(df, aes(x = rating)) + geom_bar(stat = "count")
+```
+```{r}
+df_n <- df %>% count(rating) %>% rename(count = n)
+df_n
+```
+```{r}
+ggplot(df_n, aes(x = rating, y = count)) + geom_bar(stat = "identity")
+```
+
+## Покажите, сколько фанфиков публиковалось в каждый месяц, начиная с января 2015 года включительно.
+
+```{r}
+
+```
+
+## То же самое, но используйте `geom_bar(stat = "identity")`
+
+```{r}
+
+```
+
+## Покажите помесячное количество публикаций за последние три года. Цветом выделите различные рейтинги. Число публикаций за месяц обозначается точкой, точки соединяются линиями.
+
+```{r}
+
+```
+
+# Подграфики
+
+```{r}
+ggplot(df) + facet_grid(size_cat ~ rating, switch = 'y')
+```
+
+```{r}
+ggplot(df) + facet_wrap(~ rating)
+```
+
+## Покажите ежегодное количество публикаций с 2010 года для каждого сочетания категории размера и рейтинга. Один размер — одна строка, один рейтинг — один столбец.
+
+```{r}
+theme_set(theme_light(base_size = 11))
+df %>% filter(year(published) >= 2010) %>% 
+  count(category, rating, year = floor_date(published, 'years')) %>% 
+  ggplot(aes(x = year, y = n)) + facet_wrap(category ~ rating) + geom_line() + geom_point()
+```
+
+## Каковы самые популярные жанры? Насколько одни популярнее других? Нарисуйте ежегодное количество публикаций в каждом из пяти наиболее популярных жанров, каждый жанр — в отдельном подграфике.
+
+```{r}
+top_5_genres <- df %>% select(id, genre) %>% 
+  unnest(genre) %>% count(genre) %>% 
+  top_n(5, n) %>% pull(genre)
+top_5_genres
+```
+```{r}
+df %>% filter(year(published) > 2010) %>% 
+  unnest(genre) %>% filter(genre %in% top_5_genres) %>% 
+  group_by(genre, year = floor_date(published, 'years')) %>% 
+  summarise(n = length(unique(id))) %>% 
+  ggplot(aes(x = year, y = n)) + geom_line() + geom_point() + facet_wrap(~ genre)
+```
+
+# Темы
+
+## Воспроизведите картинки из слайдов
+
+```{r}
+
+```
+
+```{r}
+
+```
+

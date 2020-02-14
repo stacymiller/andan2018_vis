@@ -1,0 +1,91 @@
+---
+title: "HTMLwidgets"
+output: html_notebook
+---
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+```
+```{r}
+library(formattable)
+```
+```{r}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(jsonlite)
+df_raw <- stream_in(file('fics_extended.jsl'), simplifyMatrix = FALSE)
+df <- df_raw %>% mutate(
+  published = ymd(published),
+  last_update = ymd(last_update),
+  size_cat = factor(size_cat, levels = c("small", "medium", "large"), ordered = TRUE),
+  rating = ifelse(rating == "G", "General", rating) %>% factor(levels = c("не указан", "General", "PG-13", "R", "NC-17"), ordered = TRUE),
+  translated = translators %>% sapply(length) > 0,
+  characters_unpaired = sapply(characters, function(x) as.vector( unlist(x) ))
+)
+```
+
+# Formattable
+
+```{r}
+df %>% count(category, rating) %>% spread(rating, n, fill = 0) %>% 
+  formattable(list(
+    area(col = colnames(.)[-1]) ~ color_tile("white", "Salmon")
+  ))
+```
+```{r}
+df_shares <- df %>% mutate(year = year(published)) %>% filter(year > 2010) %>% add_count(year) %>% 
+  unnest(genre) %>% 
+  group_by(year, genre) %>% summarise(genre_share = n() / n[[1]]) %>% ungroup() %>% 
+  group_by(genre) %>% filter(max(genre_share) > 0.1) %>% spread(genre, genre_share)
+df_shares
+df_shares %>% formattable(list(
+  area(col = colnames(.)[-1]) ~ color_bar("Salmon", fun = identity)
+  ))
+```
+## Такая же таблица, что и выше, но в ячейках должны стоять проценты, 29.2%
+
+# Timevis
+```{r}
+library(timevis)
+```
+
+```{r}
+top_5_authors <- df %>% filter(authors %>% sapply(length) > 0) %>% 
+  unnest(authors) %>% 
+  group_by(authors) %>% summarise(mean(comments)) %>% top_n(5) %>% pull(authors)
+df %>% filter(authors %>% sapply(length) > 0) %>% 
+  unnest(authors) %>% filter(authors %in% top_5_authors) %>% 
+  transmute(
+    start = paste(year(published), month(published), day(published), sep = '-'),
+    end = ifelse(published == last_update, NA, paste(year(last_update), month(last_update), day(last_update), sep = '-')),
+    type = ifelse(published == last_update, 'point', 'range'),
+    content = title,
+    title = paste(authors, title),
+    id = id,
+    subgroup = authors,
+    style = paste0('background-color:', recode(authors, "119855" = 'Salmon', "40157" = 'LightBlue', "Ariel Lindt, Gobuss" = 'ForestGreen', "Less Wrong" = 'LightGrey'), ';')
+  ) %>% timevis()
+```
+# режим работы наиболее продуктивных авторов
+
+```{r}
+library(plotly)
+```
+```{r}
+top_5_genres <- df %>% unnest(genre) %>% count(genre) %>% top_n(5, n) %>% pull(genre)
+df %>% 
+  mutate(year = floor_date(published, 'years')) %>% 
+  unnest(genre) %>% filter((genre %in% top_5_genres) & (year(published) > 2011)) %>% 
+  count(genre, year) %>% 
+  complete(genre, year, fill = list(n = 0)) %>% 
+  plot_ly() %>% add_trace(
+    x =~year,
+    y = ~n,
+    color = ~genre,
+    type = 'scatter',
+    mode = 'lines+markers',
+    line = list(shape = 'spline', smoothing = 1)
+  )
+```

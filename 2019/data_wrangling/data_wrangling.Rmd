@@ -1,0 +1,191 @@
+---
+title: "Russian fanfiction through analysis"
+---
+
+# Разминка: простые данные, простые вопросы
+
+```{r include=FALSE}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(readr)
+df <- read_csv('fics_simple.csv')
+```
+
+```{r}
+head(df)
+```
+```{r include=FALSE}
+library(tidyr)
+library(lubridate)
+library(dplyr)
+```
+
+# Pipe operator
+## Сколько всего фанфиков в нашем наборе?
+```{r}
+
+```
+
+# `filter` и `select`
+```{r}
+df %>% filter(size_cat == 'small') %>% nrow()
+```
+```{r}
+df %>% select(id, starts_with('size'))
+```
+
+## Сколько фанфиков имеют размер больше 100Кб
+```{r}
+
+```
+
+## Когда опубликован самый первый фанфик? И что это был за фанфик?
+```{r}
+df %>% filter(published == min(published)) %>% select(id, title, published)
+```
+
+
+```{r}
+library(microbenchmark)
+library(ggplot2)
+theme_set(theme_light(base_size = 24))
+microbenchmark(
+  'filter' = {df %>% filter(published == max(published))},
+  'top_n' = {df %>% top_n(1, published)}
+  ) %>% autoplot()
+```
+
+# `mutate` и `arrange`
+```{r}
+df %>% filter(id %in% c(119387, 46832, 119034, 109013)) %>% select(id, title, translated) %>% mutate(
+     orig_lang = ifelse(translated, 'Unknown', 'Russian')
+     )
+```
+
+```{r}
+df %>% filter(id %in% c(119387, 46832, 119034, 109013)) %>% select(id, title, translated) %>% transmute(
+     orig_lang = ifelse(translated, 'Unknown', 'Russian')
+     )
+```
+
+```{r}
+df %>% select(title, size_kb, published) %>% arrange(size_kb, published)
+```
+
+```{r}
+df %>% select(title, size_kb, published) %>% arrange(published, desc(size_kb))
+```
+
+## Какой фанфик писался дольше всего? Сколько времени заняло написание?
+
+```{r}
+library(lubridate)
+
+```
+
+## Из тех фанфиков, которые писались больше года, какой был раньше всех начат и когда это случилось?
+```{r}
+
+```
+
+## Когда опубликовали первый переводной фанфик?
+```{r}
+
+```
+
+## Сколько времени прошло от открытия сайта до завершения  пятого опубликованного перевода?
+```{r}
+
+```
+
+# `group_by` и `summarise`
+
+```{r}
+df %>% summarise(
+  mean_size = mean(size_kb),
+  mean_ttc = mean(ymd(last_update) - ymd(published))
+  )
+```
+
+```{r}
+df %>% group_by(size_cat) %>% 
+  summarise(
+    mean_size = mean(size_kb),
+    mean_ttc = mean(ymd(last_update) - ymd(published)),
+    median_ttc = median(ymd(last_update) - ymd(published))
+  )
+```
+
+## Здесь есть есть авторские произведения и переводы. Сколько авторских, сколько переводов?
+```{r}
+
+```
+
+## Как часто появляются новые фанфики? Посчитайте, сколько в среднем фанфиков появляется в месяц.
+```{r}
+
+```
+
+## Отличается ли частота публикаций в месяц, рассчитанная за всё время существования сайта, от рассчитанной за последние пять лет?
+```{r}
+
+```
+
+## Отличается ли частота публикаций для фанфиков разных рейтингов?
+
+```{r}
+
+```
+
+
+# Плохие данные
+
+```{r}
+Sys.setlocale('LC_CTYPE', 'UTF-8')  # if for any reason this is not default
+library(jsonlite)
+df <- stream_in(file('fics.jsl'), simplifyMatrix=FALSE)
+```
+
+```{r}
+glimpse(df)
+```
+
+# Работа со списками
+
+```{r}
+df %>% slice(1, 3, 5) %>% select(id, title, genre) %>% unnest(genre)
+```
+
+## Каков самый популярный жанр?
+
+```{r}
+
+```
+
+## Каков был самый популярный жанр в каждом из последних пяти лет?
+```{r}
+
+```
+## С какими жанрами чаще всего сочетается PWP (porn without plot)?
+```{r}
+
+```
+
+# `gather` и `spread`
+
+```{r}
+df %>% select(id, published, last_update) %>% slice(1:3) %>% gather("action", "date", published, last_update)
+```
+
+```{r}
+df %>% filter(year(ymd(published)) > 2016) %>% count(rating, year = year(published)) %>% spread(year, n)
+```
+
+## Соберите отчёт по количеству публикаций в пяти наиболее популярных жанрах за последние 7 лет. Каждый год — отдельная колонка.
+```{r}
+
+```
+## Посчитайте среднемесячное количество публикаций различного рейтинга. Учтите, что в некоторых месяцах могло не быть фанфиков какого-то рейтинга.
+```{r}
+
+```
+
